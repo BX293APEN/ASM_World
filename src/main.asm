@@ -1,72 +1,111 @@
 ; ニーモニック・レジスタ名は大文字小文字を区別しない
+GLOBAL          _start                                                          ; グローバルシンボルをGLOBALで宣言し、リンカに伝える
 
-section .data
-    hexchars db '0123456789ABCDEF'
-    newline db 0x0A
+SECTION         .data
+                HEXCHARS        DB                  '0123456789ABCDEF'
+                NEWLINE         DB                  0x0A
 
-section .bss
-    hexbuf resb 16
+SECTION         .bss
+                HEXBUF          RESB                16
+                STRBUF          RESB                256
+                STRLEN          RESQ                1                           ; 現在の長さを保持
 
-section .text
-global _start
+SECTION         .text
 
-print:
+PRINT:
+                MOV             RAX,                1                           ; SYS_WRITE
+                MOV             RDI,                1                           ; STDOUT
+;               MOV             RSI,                BUF                         ; バッファ
+;               MOV             RDX,                LEN                         ; 長さ
+                SYSCALL
+                RET
 
-    mov rax, 1      ; sys_write
-    mov rdi, 1      ; stdout
-;   mov rsi, buf    ; バッファ
-;   mov rdx, len    ; 長さ
+CHARSTORE:  
+                MOV             [RDI],              AL
+                INC             RDI
 
-    syscall
+                                                                                ; STRLEN = RDI - STRBUF
+                MOV             RCX,                RDI
+                SUB             RCX,                STRBUF
+                MOV             [STRLEN],           RCX
+                RET
 
-    ret
+HEXSTR: 
+                                                                                ; 入力:  RAX = 値
+                                                                                ; 出力:  RDI = HEXBUF
+                                                                                ; 破壊:  RBX, RCX, RDX
 
-hexstr:
-    ; 入力:  RAX = 値
-    ; 出力:  RDI = hexbuf
-    ; 破壊:  RBX, RCX, RDX
+                PUSH            RBX
+                MOV             RBX,                RAX
+                MOV             RCX,                16
+                LEA             RDI,                [HEXBUF]
 
-    push rbx
-    mov rbx, rax
-    mov rcx, 16
-    lea rdi, [hexbuf]
+.LOOP:  
+                DEC             RCX
+                MOV             RDX,                RBX
+                AND             RDX,                0xF
+                MOV             DL,                 [HEXCHARS + RDX]
+                MOV             [RDI + RCX],        DL
+                SHR             RBX,                4
+                TEST            RCX,                RCX
+                JNZ             .LOOP
 
-.loop:
-    dec rcx
-    mov rdx, rbx
-    and rdx, 0xF
-    mov dl, [hexchars + rdx]
-    mov [rdi + rcx], dl
-    shr rbx, 4
-    test rcx, rcx
-    jnz .loop
+                POP             RBX
+                RET
 
-    pop rbx
-    ret
 
-printhex:
-    ; 入力: RAX = 表示したい値
+; 入力: RAX = 表示したい値
+PRINTHEX:
+                CALL            HEXSTR
 
-    call hexstr
+                                                                                ; HEXBUFを表示
+                MOV             RSI,                RDI                         ; HEXSTRが返したアドレス
+                MOV             RDX,                16
+                CALL            PRINT
 
-    ; hexbufを表示
-    mov rsi, rdi    ; hexstrが返したアドレス
-    mov rdx, 16
-    call print
+                RET
 
-    ret
-
+; エントリーポイント(main関数) デフォルト : _start
+; エントリーポイントの名前変更は ld コマンドの-e オプションで行う
 _start:
-    mov rax, 0x1234ABCD5678EF00 ; 表示したい値
-    call printhex
+;               MOV             RAX,                0x1234ABCD5678EF00          ; 表示したい値
+;               CALL            PRINTHEX
 
-    ; 改行
-    mov rsi, newline
-    mov rdx, 1
-    call print
 
-    ; exit(0)
-    mov rax, 60
-    xor rdi, rdi
-    syscall
+; 改行
+;               MOV             RSI,                NEWLINE
+;               MOV             RDX,                1
+;               CALL            PRINT
+
+                LEA             RDI,                [STRBUF]                    ; 書き込み開始位置
+
+                MOV             AL,                 'H'
+                CALL            CHARSTORE
+
+                MOV             AL,                 'e'
+                CALL            CHARSTORE
+
+                MOV             AL,                 'l'
+                CALL            CHARSTORE
+
+                MOV             AL,                 'l'
+                CALL            CHARSTORE
+
+                MOV             AL,                 'o'
+                CALL            CHARSTORE
+
+                LEA             RSI,                [STRBUF]
+                MOV             RDX,                [STRLEN]
+                CALL            PRINT
+
+
+; 改行  
+                MOV             RSI,                NEWLINE
+                MOV             RDX,                1
+                CALL            PRINT
+
+; 終了
+                MOV             RAX,                60
+                XOR             RDI,                RDI
+                SYSCALL
 
